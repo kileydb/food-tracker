@@ -378,18 +378,21 @@ function AddEntry({ onAdd, recipes, defaultDate }) {
   const [meal, setMeal] = useState('Breakfast')
   const [desc, setDesc] = useState('')
   const [preview, setPreview] = useState(null)
+  const [basePreview, setBasePreview] = useState(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [editing, setEditing] = useState(false)
 
   useEffect(() => { setDate(defaultDate) }, [defaultDate])
 
-  const estimate = async () => {
-    if (!desc.trim()) return
-    setBusy(true); setErr(''); setPreview(null)
+  const estimate = async (customDesc) => {
+    const targetDesc = (customDesc || desc).trim()
+    if (!targetDesc) return
+    setBusy(true); setErr(''); setPreview(null); setBasePreview(null)
     try {
-      const result = await llm.estimateNutrition(desc, { recipes })
+      const result = await llm.estimateNutrition(targetDesc, { recipes })
       setPreview(result)
+      setBasePreview(result)
     } catch (e) {
       setErr(e.message)
       if (e.code === 'LLM_NOT_CONFIGURED') openSettings('settings-llm')
@@ -417,6 +420,17 @@ function AddEntry({ onAdd, recipes, defaultDate }) {
 
   const updatePreview = (key, val) => setPreview(p => ({ ...p, [key]: val }))
 
+  const scale = (factor) => {
+    if (!basePreview) return
+    setPreview({
+      ...basePreview,
+      calories: Math.round(basePreview.calories * factor),
+      protein_g: Math.round(basePreview.protein_g * factor),
+      calcium_mg: Math.round(basePreview.calcium_mg * factor),
+      veg_servings: Math.round((basePreview.veg_servings * factor) * 2) / 2,
+    })
+  }
+
   return (
     <div className="card">
       <h2>Log a meal</h2>
@@ -439,6 +453,26 @@ function AddEntry({ onAdd, recipes, defaultDate }) {
           value={desc}
           onChange={e => setDesc(e.target.value)}
         />
+        {desc.trim().length > 1 && recipes.filter(r => r.Recipe.toLowerCase().includes(desc.toLowerCase())).length > 0 && (
+          <div className="recipe-suggestions" style={{ marginTop: 4 }}>
+            <div className="muted" style={{ fontSize: '0.75rem', marginBottom: 2 }}>Suggested recipes:</div>
+            <div className="flex gap-4 flex-wrap">
+              {recipes
+                .filter(r => r.Recipe.toLowerCase().includes(desc.toLowerCase()))
+                .slice(0, 3)
+                .map(r => (
+                  <button
+                    key={r.Recipe}
+                    className="btn btn-secondary"
+                    style={{ padding: '2px 6px', fontSize: '0.75rem' }}
+                    onClick={() => { setDesc(r.Recipe); estimate(r.Recipe); }}
+                  >
+                    {r.Recipe}
+                  </button>
+                ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {err && <div className="banner error">{err}</div>}
@@ -456,6 +490,12 @@ function AddEntry({ onAdd, recipes, defaultDate }) {
             <span className={`muted confidence-${preview.confidence}`}>
               confidence: {preview.confidence}
             </span>
+          </div>
+          <div className="flex gap-8 items-center" style={{ marginBottom: 12 }}>
+            <span className="muted" style={{ fontSize: '0.85rem' }}>Scale:</span>
+            <button className="btn btn-secondary" style={{ padding: '2px 8px', fontSize: '0.8rem' }} onClick={() => scale(0.5)}>1/2 serving</button>
+            <button className="btn btn-secondary" style={{ padding: '2px 8px', fontSize: '0.8rem' }} onClick={() => scale(1)}>1 serving</button>
+            <button className="btn btn-secondary" style={{ padding: '2px 8px', fontSize: '0.8rem' }} onClick={() => scale(2)}>2 servings</button>
           </div>
           <div className="stat-grid">
             {editing ? (

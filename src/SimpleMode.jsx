@@ -5,7 +5,7 @@ import { debounce } from './debounce.js'
 import { StatusBadge } from './StatusBadge.jsx'
 import { openSettings } from './SettingsButton.jsx'
 import { Footer } from './Footer.jsx'
-import { PROTEIN_LOG_HEADERS, GOALS_HEADERS } from './storage/markdown.js'
+import { PROTEIN_LOG_HEADERS, GOALS_HEADERS, RECIPE_HEADERS } from './storage/markdown.js'
 import { readEntries, writeEntries } from './storage/mdyaml.js'
 import { currentMonthKey, entryFileName, listMonthFiles, groupByMonth } from './storage/monthly.js'
 import { mergeEntry, updateEntryAt } from './storage/mergeEntry.js'
@@ -109,8 +109,10 @@ function MarkdownView({ text }) {
   return <div className="systems-content">{blocks}</div>
 }
 
-export default function SimpleMode({ storageReady, folderName, mode, setMode, storageProvider, syncStatus }) {  const [entries, setEntries] = useState([])
+export default function SimpleMode({ storageReady, folderName, mode, setMode, storageProvider, syncStatus }) {
+  const [entries, setEntries] = useState([])
   const [goals, setGoals] = useState([])
+  const [recipes, setRecipes] = useState([])
   const [systemsText, setSystemsText] = useState('')
   const [error, setError] = useState('')
   const [loadingHistory, setLoadingHistory] = useState(false)
@@ -135,13 +137,15 @@ export default function SimpleMode({ storageReady, folderName, mode, setMode, st
       await storage.scaffold(true)
       const curKey = currentMonthKey()
       const curName = entryFileName('protein', curKey)
-      const [logText, goalsText, sysText] = await Promise.all([
+      const [logText, goalsText, sysText, recipesText] = await Promise.all([
         storage.readFile(curName).catch(() => ''),
         storage.readFile('goals.md').catch(() => ''),
         storage.readFile('systems.md').catch(() => ''),
+        storage.readFile('recipes.md').catch(() => ''),
       ])
       setEntries(readEntries(logText, PROTEIN_LOG_HEADERS).rows)
       setGoals(readEntries(goalsText, GOALS_HEADERS).rows)
+      setRecipes(readEntries(recipesText, RECIPE_HEADERS).rows)
       setSystemsText(sysText)
       setError('')
 
@@ -343,6 +347,7 @@ export default function SimpleMode({ storageReady, folderName, mode, setMode, st
             onAdd={addEntry}
             defaultDate={today}
             onAfterSave={requestCoaching}
+            recipes={recipes}
           />
         )}
       </div>
@@ -447,10 +452,11 @@ function SimpleEntryRow({ entry, onUpdate, onDelete }) {
   )
 }
 
-function AddEntrySimple({ onAdd, defaultDate, onAfterSave }) {
+function AddEntrySimple({ onAdd, defaultDate, onAfterSave, recipes = [] }) {
   const [date, setDate] = useState(defaultDate)
   const [meal, setMeal] = useState('')
   const [protein, setProtein] = useState('')
+  const [baseProtein, setBaseProtein] = useState(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
@@ -460,12 +466,14 @@ function AddEntrySimple({ onAdd, defaultDate, onAfterSave }) {
 
   useEffect(() => { setDate(defaultDate) }, [defaultDate])
 
-  const estimate = async () => {
-    if (!meal.trim()) return
-    setBusy(true); setErr('')
+  const estimate = async (customMeal) => {
+    const targetMeal = (customMeal || meal).trim()
+    if (!targetMeal) return
+    setBusy(true); setErr(''); setBaseProtein(null)
     try {
-      const result = await llm.estimateNutrition(meal, {})
+      const result = await llm.estimateNutrition(targetMeal, { recipes })
       setProtein(String(result.protein_g ?? ''))
+      setBaseProtein(result.protein_g ?? 0)
     } catch (e) {
       setErr(e.message)
       if (e.code === 'LLM_NOT_CONFIGURED') openSettings('settings-llm')
@@ -482,8 +490,13 @@ function AddEntrySimple({ onAdd, defaultDate, onAfterSave }) {
       Meal: mealSnapshot,
       'Protein (g)': proteinSnapshot,
     })
-    setMeal(''); setProtein(''); setErr('')
+    setMeal(''); setProtein(''); setErr(''); setBaseProtein(null)
     onAfterSave?.(mealSnapshot, proteinSnapshot)
+  }
+
+  const scale = (factor) => {
+    if (baseProtein === null) return
+    setProtein(String(Math.round(baseProtein * factor)))
   }
 
   const save = async () => {
@@ -491,12 +504,15 @@ function AddEntrySimple({ onAdd, defaultDate, onAfterSave }) {
     await doSave(protein)
   }
 
-  const estimateAndSave = async () => {
-    if (!meal.trim()) return
-    setBusy(true); setErr('')
+  const estimateAndSave = async (customMeal) => {
+    const targetMeal = (customMeal || meal).trim()
+    if (!targetMeal) return
+    setBusy(true); setErr(''); setBaseProtein(null)
     try {
-      const result = await llm.estimateNutrition(meal, {})
-      await doSave(String(result.protein_g ?? '0'))
+      const result = await llm.estimateNutrition(targetMeal, { recipes })
+      const p = result.protein_g ?? 0
+      setBaseProtein(p)
+      await doSave(String(p))
     } catch (e) {
       setErr(e.message)
       if (e.code === 'LLM_NOT_CONFIGURED') openSettings('settings-llm')
@@ -521,6 +537,26 @@ function AddEntrySimple({ onAdd, defaultDate, onAfterSave }) {
           value={meal}
           onChange={e => setMeal(e.target.value)}
         />
+        {meal.trim().length > 1 && recipes.filter(r => r.Recipe.toLowerCase().includes(meal.toLowerCase())).length > 0 && (
+          <div className="recipe-suggestions" style={{ marginTop: 4 }}>
+            <div className="muted" style={{ fontSize: '0.75rem', marginBottom: 2 }}>Suggested recipes:</div>
+            <div className="flex gap-4 flex-wrap">
+              {recipes
+                .filter(r => r.Recipe.toLowerCase().includes(meal.toLowerCase()))
+                .slice(0, 3)
+                .map(r => (
+                  <button
+                    key={r.Recipe}
+                    className="btn btn-secondary"
+                    style={{ padding: '2px 6px', fontSize: '0.75rem' }}
+                    onClick={() => { setMeal(r.Recipe); estimate(r.Recipe); }}
+                  >
+                    {r.Recipe}
+                  </button>
+                ))}
+            </div>
+          </div>
+        )}
       </div>
       <div className="protein-estimate-row">
         <div className="field">
@@ -541,6 +577,14 @@ function AddEntrySimple({ onAdd, defaultDate, onAfterSave }) {
           {busy ? <><span className="spinner" />Estimating…</> : '✨ Estimate'}
         </button>
       </div>
+      {baseProtein !== null && (
+        <div className="flex gap-8 items-center" style={{ marginTop: 8, marginBottom: 8 }}>
+          <span className="muted" style={{ fontSize: '0.85rem' }}>Scale:</span>
+          <button className="btn btn-secondary" style={{ padding: '2px 8px', fontSize: '0.8rem' }} onClick={() => scale(0.5)}>1/2 serving</button>
+          <button className="btn btn-secondary" style={{ padding: '2px 8px', fontSize: '0.8rem' }} onClick={() => scale(1)}>1 serving</button>
+          <button className="btn btn-secondary" style={{ padding: '2px 8px', fontSize: '0.8rem' }} onClick={() => scale(2)}>2 servings</button>
+        </div>
+      )}
       {err && <div className="banner error">{err}</div>}
       <div className="add-entry-actions">
         {llmReady && !proteinFilled ? (

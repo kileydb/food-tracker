@@ -114,6 +114,8 @@ Required JSON schema:
   "confidence": "low" | "medium" | "high"
 }
 
+If the user mentions a known recipe (provided below) without specifying a portion or quantity, assume exactly 1 serving of that recipe.
+
 Be conservative. Round calories/calcium to nearest 10, protein to nearest 1, veg_servings to 0.5. Use values from typical USDA food data. If the input is empty or non-food, return all zeros with confidence "low".`
 
 export async function estimateNutrition(foodDescription, { recipes = [], signal } = {}) {
