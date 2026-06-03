@@ -67,7 +67,17 @@ export function replaceFirstTable(content, headers, rows) {
   return [...before, ...newTable, ...after].join('\n')
 }
 
+// Used for READING — only columns that all existing log files have.
+// parseTable requires every expected header to be present, so new
+// optional columns must not be listed here until all files are migrated.
 export const DAILY_LOG_HEADERS = [
+  'Date', 'Meal', 'Food Description', 'Calories', 'Protein (g)',
+  'Calcium (mg)', 'Veg Servings', 'Omega-3', 'Notes'
+]
+
+// Used for WRITING — the full schema including new optional columns.
+// readEntries uses DAILY_LOG_HEADERS; writeEntries uses this.
+export const DAILY_LOG_WRITE_HEADERS = [
   'Date', 'Meal', 'Food Description', 'Calories', 'Protein (g)',
   'Calcium (mg)', 'Veg Servings', 'Water (oz)', 'Omega-3', 'Notes'
 ]
