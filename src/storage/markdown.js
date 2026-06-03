@@ -9,7 +9,11 @@ export function parseTable(content, expectedHeaders) {
       const headers = splitRow(line)
       const sep = (lines[i + 1] || '').trim()
       if (/^\|[-\s|:]+\|$/.test(sep)) {
-        if (!expectedHeaders || expectedHeaders.every(h => headers.includes(h))) {
+        // Only require the first two headers as a discriminator — enough to
+        // identify the right table without blocking files that predate a new
+        // optional column being added to the schema.
+        const required = expectedHeaders ? expectedHeaders.slice(0, 2) : null
+        if (!required || required.every(h => headers.includes(h))) {
           const rows = []
           let j = i + 2
           while (j < lines.length) {
@@ -67,17 +71,7 @@ export function replaceFirstTable(content, headers, rows) {
   return [...before, ...newTable, ...after].join('\n')
 }
 
-// Used for READING — only columns that all existing log files have.
-// parseTable requires every expected header to be present, so new
-// optional columns must not be listed here until all files are migrated.
 export const DAILY_LOG_HEADERS = [
-  'Date', 'Meal', 'Food Description', 'Calories', 'Protein (g)',
-  'Calcium (mg)', 'Veg Servings', 'Omega-3', 'Notes'
-]
-
-// Used for WRITING — the full schema including new optional columns.
-// readEntries uses DAILY_LOG_HEADERS; writeEntries uses this.
-export const DAILY_LOG_WRITE_HEADERS = [
   'Date', 'Meal', 'Food Description', 'Calories', 'Protein (g)',
   'Calcium (mg)', 'Veg Servings', 'Water (oz)', 'Omega-3', 'Notes'
 ]

@@ -6,7 +6,7 @@ import {
 import '../packages/install-prompt/src/styles/install-prompt.css'
 import { storage, getEngine, initStorage, detectModeFromData, registerSyncWorker, PROVIDERS, getProviderName, getAvailableProviders, getPrimaryId, setPrimary } from './storage/storage.js'
 import {
-  DAILY_LOG_HEADERS, DAILY_LOG_WRITE_HEADERS, GOALS_HEADERS, RECIPE_HEADERS, WEIGHT_HEADERS,
+  DAILY_LOG_HEADERS, GOALS_HEADERS, RECIPE_HEADERS, WEIGHT_HEADERS,
 } from './storage/markdown.js'
 import { readEntries, writeEntries } from './storage/mdyaml.js'
 import { currentMonthKey, entryFileName, listMonthFiles, groupByMonth } from './storage/monthly.js'
@@ -209,13 +209,13 @@ export default function App() {
     for (const m of existing) {
       if (!buckets.has(m.monthKey)) {
         const orig = await storage.readFile(m.name)
-        await storage.writeFile(m.name, writeEntries(orig, DAILY_LOG_WRITE_HEADERS, [], { kind: 'entries', mode: 'advanced', period: m.monthKey }))
+        await storage.writeFile(m.name, writeEntries(orig, DAILY_LOG_HEADERS, [], { kind: 'entries', mode: 'advanced', period: m.monthKey }))
       }
     }
     for (const [key, rows] of buckets) {
       const name = entryFileName('entries', key)
       const original = await storage.readFile(name)
-      const next = writeEntries(original, DAILY_LOG_WRITE_HEADERS, rows, { kind: 'entries', mode: 'advanced', period: key })
+      const next = writeEntries(original, DAILY_LOG_HEADERS, rows, { kind: 'entries', mode: 'advanced', period: key })
       await storage.writeFile(name, next)
     }
     setLogEntries(sorted)
