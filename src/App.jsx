@@ -48,6 +48,57 @@ function num(v) {
   return isFinite(n) ? n : 0
 }
 
+// ---------------------------------------------------------------------------
+// Water keyword matching
+// Add phrases here to have them count toward daily water/hydration tracking.
+// Matching is case-insensitive and substring-based (e.g. "herbal tea" matches
+// "chamomile herbal tea"). The LLM is NOT used — only this list.
+// ---------------------------------------------------------------------------
+export const WATER_KEYWORDS = [
+  'water',
+  'sparkling water',
+  'mineral water',
+  'seltzer',
+  'club soda',
+  'herbal tea',
+  'chamomile',
+  'peppermint tea',
+  'rooibos',
+  'hibiscus tea',
+  'tisane',
+]
+
+/**
+ * Returns estimated fluid oz for a food description based solely on
+ * WATER_KEYWORDS. Returns 0 if none of the keywords match.
+ * Attempts to detect an explicit quantity (cups, glasses, oz, ml, litre).
+ * Defaults to 8 oz (one standard cup/glass) when no quantity is found.
+ */
+export function detectWaterOz(description) {
+  if (!description) return 0
+  const lower = description.toLowerCase()
+  if (!WATER_KEYWORDS.some(kw => lower.includes(kw))) return 0
+
+  // Look for an explicit quantity with a unit
+  const unitMatch = lower.match(/(\d+(?:\.\d+)?)\s*(oz|ml|l\b|litre|liter|cup|glass|bottle|can)/)
+  if (unitMatch) {
+    const qty = parseFloat(unitMatch[1])
+    const unit = unitMatch[2]
+    if (unit === 'oz') return Math.round(qty / 2) * 2
+    if (unit === 'ml') return Math.round(qty / 29.5 / 2) * 2
+    if (unit === 'l' || unit.startsWith('litr') || unit.startsWith('liter')) return Math.round(qty * 33.8 / 2) * 2
+    if (unit === 'cup' || unit === 'glass') return qty * 8
+    if (unit === 'bottle') return qty * 16
+    if (unit === 'can') return qty * 12
+  }
+
+  // Look for a plain leading number without a unit ("2 herbal teas")
+  const numMatch = lower.match(/^(\d+(?:\.\d+)?)\s+/)
+  if (numMatch) return parseFloat(numMatch[1]) * 8
+
+  return 8 // default: one standard serving = 8 oz
+}
+
 // Parse a goal target string like "1400-1600 kcal" or "90-120 g" → midpoint number
 function parseGoalTarget(target) {
   if (!target) return null
@@ -631,7 +682,7 @@ function AddEntry({ onAdd, recipes, defaultDate, suggestions: suggestionsCsv = [
       protein_g: s.protein,
       calcium_mg: s.calcium_mg,
       veg_servings: s.veg_servings,
-      water_oz: s.water_oz || 0,
+      water_oz: detectWaterOz(s.name),
       omega3: s.omega3 || 'N',
       confidence: 'high',
       loading: false,
@@ -667,6 +718,8 @@ function AddEntry({ onAdd, recipes, defaultDate, suggestions: suggestionsCsv = [
     await Promise.all(parts.map(async (part, i) => {
       try {
         const result = await llm.estimateNutrition(part, { recipes })
+        // Water is keyword-matched client-side, not estimated by the LLM
+        result.water_oz = detectWaterOz(part)
         setPreviews(prev => prev.map(p => (p.id === newPreviews[i].id && p.loading) ? { ...p, ...result, loading: false } : p))
       } catch (e) {
         setPreviews(prev => prev.map(p => (p.id === newPreviews[i].id && p.loading) ? { ...p, loading: false, err: e.message } : p))
